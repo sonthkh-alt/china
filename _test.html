@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="vi"><head><meta charset="utf-8"><title>test</title>
+<link rel="stylesheet" href="./css/style.css"></head><body>
+<div id="app"></div><nav id="nav"></nav>
+<pre id="out" style="white-space:pre-wrap;font:12px monospace;padding:10px"></pre>
+
+<script src="./js/data/lessons-01.js"></script>
+<script src="./js/data/lessons-02.js"></script>
+<script src="./js/data/lessons-03.js"></script>
+<script src="./js/data/lessons-04.js"></script>
+<script src="./js/data/lessons-05.js"></script>
+<script src="./js/data/lessons-06.js"></script>
+<script src="./js/data/lessons-07.js"></script>
+<script src="./js/data/pinyin.js"></script>
+<script src="./js/store.js"></script>
+<script src="./js/tts.js"></script>
+<script src="./js/app.js"></script>
+
+<script>
+var LOG = [], ERRS = [];
+window.onerror = function (m, s, l, c) { ERRS.push("JS ERROR: " + m + " @" + l + ":" + c); };
+function log(s) { LOG.push(s); }
+function chk(name, cond, extra) { log((cond ? "PASS " : "FAIL ") + name + (extra ? " :: " + extra : "")); if (!cond) ERRS.push("FAIL " + name + (extra ? " :: " + extra : "")); }
+
+setTimeout(function () {
+  try {
+    var L = window.LESSONS;
+    chk("90 bài học", L.length === 90, "co " + L.length);
+    var days = L.map(function (x) { return x.d; });
+    var uniq = new Set(days);
+    chk("ngay 1..90 khong trung", uniq.size === 90 && Math.min.apply(null, days) === 1 && Math.max.apply(null, days) === 90);
+
+    var missing = [];
+    L.forEach(function (x) {
+      if (!x.title || !x.goal || !x.theme || !x.week) missing.push(x.d + ":meta");
+      if (!x.vocab || !x.vocab.length) missing.push(x.d + ":vocab");
+      if (!x.drills || !x.drills.length) missing.push(x.d + ":drills");
+      (x.vocab || []).forEach(function (v) { if (v.length !== 3 || !v[0] || !v[1] || !v[2]) missing.push(x.d + ":vocabrow"); });
+      if (x.dialogue) (x.dialogue.lines || []).forEach(function (ln) { if (ln.length !== 4) missing.push(x.d + ":dlgrow"); });
+      (x.grammar || []).forEach(function (g) { if (!g.p || !g.e) missing.push(x.d + ":gram"); (g.ex || []).forEach(function (e) { if (e.length !== 3) missing.push(x.d + ":gramex"); }); });
+      (x.drills || []).forEach(function (dr) { if (dr.length !== 3) missing.push(x.d + ":drillrow"); });
+    });
+    chk("cau truc du lieu hop le", missing.length === 0, missing.slice(0, 12).join(","));
+
+    var V = Store.allVocab();
+    log("INFO tu vung duy nhat: " + V.length);
+    chk("tren 600 tu", V.length >= 600, String(V.length));
+    var sent = Store.sentencesUpTo(90);
+    log("INFO tong cau (drill+hoi thoai): " + sent.length);
+    chk("tren 900 cau", sent.length >= 900, String(sent.length));
+
+    var badPy = V.filter(function (v) { return /[一-鿿]/.test(v.py); });
+    chk("pinyin khong lan chu Han", badPy.length === 0, badPy.slice(0, 5).map(function (x) { return x.hz; }).join(","));
+    var badHz = V.filter(function (v) { return !/[一-鿿]/.test(v.hz); });
+    chk("hanzi deu co chu Han", badHz.length <= 1, badHz.map(function (x) { return x.hz; }).join(","));
+
+    // render tat ca man hinh
+    ["home", "lessons", "lesson", "review", "quiz", "listen", "speak", "dict", "pinyin", "stats", "settings"].forEach(function (v) {
+      try { App.view = v; render(); chk("render " + v, document.getElementById("app").innerHTML.length > 100); }
+      catch (e) { chk("render " + v, false, e.message); }
+    });
+
+    // di het cac buoc cua mot so bai
+    [1, 7, 28, 45, 70, 90].forEach(function (d) {
+      try {
+        App.lessonDay = d; App.step = 0; App.view = "lesson";
+        for (var i = 0; i < 8; i++) { App.step = i; render(); }
+        chk("duyet buoc ngay " + d, true);
+      } catch (e) { chk("duyet buoc ngay " + d, false, e.message); }
+    });
+
+    // luong kiem tra
+    App.view = "quiz"; App.quiz = null; render();
+    document.querySelector('[data-act="quizStart"]').click();
+    chk("quiz khoi tao", !!App.quiz && App.quiz.list.length === 10);
+    document.querySelector('[data-act="pick"]').click();
+    chk("quiz chon dap an", App.quiz.picked !== null);
+    document.querySelector('[data-act="qNext"]').click();
+    chk("quiz cau tiep", App.quiz.i === 1);
+    for (var k = 0; k < 12; k++) { var b = document.querySelector('[data-act="pick"]'); if (b) b.click(); var n = document.querySelector('[data-act="qNext"]'); if (n) n.click(); }
+    chk("quiz ket thuc", App.quiz === null);
+
+    // luong nghe
+    App.view = "listen"; App.listen = null; render();
+    document.querySelector('[data-act="listenStart"]').click();
+    chk("listen khoi tao", !!App.listen && App.listen.list.length === 10);
+    document.querySelector('[data-act="lPick"]').click();
+    document.querySelector('[data-act="lNext"]').click();
+    chk("listen chuyen cau", App.listen.i === 1);
+
+    // luong noi
+    App.view = "speak"; App.speak = null; render();
+    document.querySelector('[data-act="speakStart"]').click();
+    chk("speak khoi tao", !!App.speak && App.speak.list.length > 0);
+    document.querySelector('[data-act="sNext"]').click();
+    chk("speak bo qua cau", App.speak.i === 1);
+
+    // flashcard: hoc tu moi ngay 1
+    App.view = "lesson"; App.lessonDay = 1; App.step = 2; render();
+    var lb = document.querySelector('[data-act="learnNew"]');
+    chk("co nut hoc the moi", !!lb);
+    if (lb) {
+      lb.click();
+      chk("flashcard khoi tao", !!App.fc && App.fc.q.length === 10, App.fc ? String(App.fc.q.length) : "null");
+      document.querySelector('[data-act="flip"]').click();
+      chk("lat the", App.fc.show === true);
+      var cardHz = App.fc.q[App.fc.i].hz;
+      document.querySelector('[data-act="grade"][data-g="2"]').click();
+      chk("cham diem SRS", !!Store.S.srs[cardHz] && Store.S.srs[cardHz].due > Store.today(), cardHz);
+      document.querySelector('[data-act="flip"]').click();
+      document.querySelector('[data-act="grade"][data-g="0"]').click();
+      chk("the quen quay lai", App.fc.again.length === 1);
+    }
+
+    // SRS lich lap lai
+    Store.grade("测试", 3); var i1 = Store.S.srs["测试"].iv;
+    Store.grade("测试", 3); var i2 = Store.S.srs["测试"].iv;
+    Store.grade("测试", 3); var i3 = Store.S.srs["测试"].iv;
+    chk("khoang cach SRS tang dan", i1 < i2 && i2 < i3, i1 + "," + i2 + "," + i3);
+    chk("ngay den han duoc doi", Store.S.srs["测试"].due > Store.today(), Store.S.srs["测试"].due);
+    Store.grade("测试", 0);
+    chk("quen -> ve 0", Store.S.srs["测试"].iv === 0);
+    delete Store.S.srs["测试"];
+
+    // hoan thanh bai hoc
+    App.view = "lesson"; App.lessonDay = 1; App.step = 0; render();
+    var d0 = Store.S.currentDay;
+    Store.markDone(1, 60);
+    chk("hoan thanh mo khoa ngay tiep", Store.S.currentDay === 2 && !!Store.S.completed[1]);
+    chk("chuoi ngay tang", Store.S.streak.count === 1);
+
+    // cham diem phat am
+    chk("cham diem giong 100%", TTS.score("你好吗", "你好吗？") === 100);
+    chk("cham diem giong thap", TTS.score("再见", "你好吗") < 40, String(TTS.score("再见", "你好吗")));
+
+    // xuat / nhap
+    var j = Store.exportJSON();
+    Store.importJSON(j);
+    chk("xuat nhap JSON", Store.S.currentDay === 2);
+
+    // tu dien tim kiem
+    App.view = "dict"; App.dictQ = "cảm ơn"; App.dictFilter = "all"; render();
+    chk("tim kiem tieng Viet", document.getElementById("dictList").innerHTML.indexOf("谢谢") > -1);
+    App.dictQ = "nihao"; render();
+    App.dictQ = "nǐ"; render();
+    chk("tim kiem pinyin", document.getElementById("dictList").innerHTML.indexOf("你") > -1);
+
+    Store.reset();
+  } catch (e) {
+    ERRS.push("EXCEPTION: " + e.message + " | " + (e.stack || "").split("\n")[1]);
+  }
+  log("=== LOI: " + ERRS.length + " ===");
+  ERRS.forEach(function (e) { log(e); });
+  document.title = "TEST_DONE errors=" + ERRS.length;
+  document.getElementById("app").innerHTML = "";
+  document.getElementById("out").textContent = LOG.join("\n");
+}, 500);
+</script>
+</body></html>
