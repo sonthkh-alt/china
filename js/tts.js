@@ -1,65 +1,103 @@
 /* ============ Âm thanh: đọc tiếng Trung + nhận diện giọng nói ============ */
 (function () {
   const synth = window.speechSynthesis;
-  let voices = [], picked = null, unlocked = false;
+  let voices = [], zhVoices = [], picked = null;
+  let lastError = "", everSpoke = false;
+
+  function rank(v) {
+    const l = (v.lang || "").toLowerCase().replace("_", "-");
+    let r;
+    if (l === "zh-cn") r = 0;
+    else if (l.startsWith("zh-han") || l === "zh") r = 1;
+    else if (l.startsWith("zh")) r = 2;          // zh-TW / zh-HK: phát âm khác đại lục
+    else r = 9;
+    // Giọng cài sẵn trên máy đáng tin hơn giọng online (mất mạng là câm)
+    return r + (v.localService === false ? 4 : 0);
+  }
 
   function loadVoices() {
     if (!synth) return;
-    voices = synth.getVoices() || [];
-    // Ưu tiên giọng Trung đại lục
-    const rank = v => {
-      const l = (v.lang || "").toLowerCase().replace("_", "-");
-      if (l === "zh-cn") return 0;
-      if (l.startsWith("zh-han") || l === "zh") return 1;
-      if (l.startsWith("zh")) return 2;
-      return 9;
-    };
-    const zh = voices.filter(v => (v.lang || "").toLowerCase().startsWith("zh")).sort((a, b) => rank(a) - rank(b));
-    picked = zh[0] || null;
-  }
-  if (synth) {
-    loadVoices();
-    synth.onvoiceschanged = loadVoices;
-    // iOS đôi khi trả về danh sách rỗng ở lần gọi đầu
-    setTimeout(loadVoices, 400);
-    setTimeout(loadVoices, 1500);
+    try { voices = synth.getVoices() || []; } catch (e) { voices = []; }
+    zhVoices = voices.filter(v => (v.lang || "").toLowerCase().startsWith("zh")).sort((a, b) => rank(a) - rank(b));
+    if (!picked || !zhVoices.includes(picked)) picked = zhVoices[0] || null;
   }
 
-  // iOS chỉ cho phát âm sau một thao tác chạm của người dùng
-  function unlock() {
-    if (unlocked || !synth) return;
-    try {
-      const u = new SpeechSynthesisUtterance(" ");
-      u.volume = 0; u.lang = "zh-CN";
-      synth.speak(u);
-      unlocked = true;
-      loadVoices();
-    } catch (e) { /* bỏ qua */ }
+  if (synth) {
+    loadVoices();
+    // iOS/Chrome nạp danh sách giọng không đồng bộ
+    if (typeof synth.addEventListener === "function") synth.addEventListener("voiceschanged", loadVoices);
+    synth.onvoiceschanged = loadVoices;
+    [300, 900, 2000, 4000].forEach(ms => setTimeout(loadVoices, ms));
   }
+
+  // Chạm đầu tiên: chỉ nạp lại danh sách giọng.
+  // KHÔNG phát utterance rỗng ở đây — trên iOS việc đó dễ làm kẹt hàng đợi.
+  function unlock() { loadVoices(); }
   ["touchend", "click"].forEach(ev =>
     document.addEventListener(ev, unlock, { once: true, passive: true })
   );
 
+  function makeUtterance(text, opts) {
+    const u = new SpeechSynthesisUtterance(String(text).replace(/[—…·]/g, " "));
+    u.lang = "zh-CN";
+    if (picked) u.voice = picked;
+    const st = (window.Store && Store.S && Store.S.settings) || {};
+    u.rate = opts.rate || st.rate || 0.85;
+    u.pitch = 1;
+    u.volume = 1;
+    return u;
+  }
+
   let speaking = false;
+
   function speak(text, opts) {
-    if (!synth || !text) return false;
     opts = opts || {};
+    if (!synth) { lastError = "Trình duyệt không hỗ trợ đọc văn bản."; opts.onfail && opts.onfail(lastError); return false; }
+    if (!text) return false;
+    lastError = "";
+
     try {
-      synth.cancel();                       // tránh nghẽn hàng đợi trên iOS
+      // Chỉ huỷ khi thật sự đang có gì đó phát — huỷ vô cớ làm Safari iOS câm.
+      if (synth.speaking || synth.pending) synth.cancel();
       if (synth.paused) synth.resume();
-      const u = new SpeechSynthesisUtterance(String(text).replace(/[—…]/g, " "));
-      u.lang = "zh-CN";
-      if (picked) u.voice = picked;
-      const st = (window.Store && Store.S && Store.S.settings) || {};
-      u.rate = opts.rate || st.rate || 0.85;
-      u.pitch = 1;
-      u.volume = 1;
-      u.onstart = () => { speaking = true; };
-      u.onend = () => { speaking = false; opts.onend && opts.onend(); };
-      u.onerror = () => { speaking = false; opts.onend && opts.onend(); };
-      synth.speak(u);
+
+      let started = false, tried = 0;
+
+      const fire = () => {
+        tried++;
+        const u = makeUtterance(text, opts);
+        u.onstart = () => { started = true; everSpoke = true; speaking = true; };
+        u.onend = () => { speaking = false; opts.onend && opts.onend(); };
+        u.onerror = e => {
+          speaking = false;
+          const err = (e && e.error) || "unknown";
+          // "interrupted"/"canceled" là bình thường khi người dùng bấm câu khác
+          if (err !== "interrupted" && err !== "canceled") {
+            lastError = err;
+            opts.onfail && opts.onfail(err);
+          }
+          opts.onend && opts.onend();
+        };
+        synth.speak(u);
+
+        // Watchdog: iOS đôi khi nuốt lệnh đầu tiên — thử lại đúng một lần.
+        setTimeout(() => {
+          if (started || synth.speaking || synth.pending) return;
+          if (tried < 2) { try { synth.resume(); } catch (e) {} fire(); }
+          else if (!everSpoke) {
+            lastError = "no-audio";
+            opts.onfail && opts.onfail("no-audio");
+          }
+        }, 350);
+      };
+
+      fire();
       return true;
-    } catch (e) { return false; }
+    } catch (e) {
+      lastError = e.message || "error";
+      opts.onfail && opts.onfail(lastError);
+      return false;
+    }
   }
 
   function speakSeq(list, gap, done) {
@@ -72,9 +110,31 @@
     next();
   }
 
+  // Cho phép người dùng chọn thủ công một giọng tiếng Trung khác
+  function pickVoice(i) {
+    loadVoices();
+    if (zhVoices[i]) { picked = zhVoices[i]; return picked.name; }
+    return null;
+  }
+
   function stop() { try { synth && synth.cancel(); } catch (e) {} speaking = false; }
   function available() { return !!synth; }
   function hasChineseVoice() { return !!picked; }
+
+  function status() {
+    loadVoices();
+    return {
+      supported: !!synth,
+      totalVoices: voices.length,
+      zh: zhVoices.map(v => ({ name: v.name, lang: v.lang, local: v.localService })),
+      picked: picked ? picked.name + " (" + picked.lang + ")" : null,
+      everSpoke: everSpoke,
+      lastError: lastError,
+      recognition: !!(window.SpeechRecognition || window.webkitSpeechRecognition),
+      secure: window.isSecureContext !== false,
+      protocol: location.protocol
+    };
+  }
 
   /* ---------- nhận diện giọng nói ---------- */
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -105,7 +165,6 @@
   function score(said, target) {
     const a = clean(said), b = clean(target);
     if (!a || !b) return 0;
-    // LCS trên ký tự Hán
     const m = a.length, n = b.length;
     const dp = new Array(n + 1).fill(0);
     for (let i = 1; i <= m; i++) {
@@ -119,5 +178,10 @@
     return Math.round((dp[n] * 2 / (m + n)) * 100);
   }
 
-  window.TTS = { speak, speakSeq, stop, available, hasChineseVoice, unlock, recognize, recognitionSupported, score, get speaking() { return speaking; } };
+  window.TTS = {
+    speak, speakSeq, stop, available, hasChineseVoice, unlock, status, pickVoice,
+    recognize, recognitionSupported, score,
+    get speaking() { return speaking; },
+    get lastError() { return lastError; }
+  };
 })();

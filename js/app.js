@@ -31,6 +31,20 @@
     return `<button class="spk" data-say="${App.say.length - 1}" aria-label="Nghe">🔊</button>`;
   }
   function shuffle(a) { a = a.slice(); for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; }
+
+  // Phát âm và báo rõ khi hỏng, thay vì im lặng không lý do
+  let audioWarned = false;
+  function speakSafe(text) {
+    if (!TTS.available()) { openAudioHelp("Trình duyệt này không hỗ trợ đọc văn bản."); return; }
+    if (!TTS.hasChineseVoice()) { openAudioHelp("Máy chưa có giọng tiếng Trung."); return; }
+    TTS.speak(text, {
+      onfail: () => {
+        if (audioWarned) { toast("Vẫn không phát được — mở Cài đặt → Chẩn đoán âm thanh"); return; }
+        audioWarned = true;
+        openAudioHelp("Đã gọi phát âm nhưng không có tiếng phát ra.");
+      }
+    });
+  }
   function pct(a, b) { return b ? Math.round(a / b * 100) : 0; }
   function fmtMin(m) { m = Math.round(m); return m < 60 ? m + " phút" : Math.floor(m / 60) + "h" + String(m % 60).padStart(2, "0"); }
 
@@ -116,6 +130,15 @@
         <div class="bar dark" style="margin-top:14px"><i style="width:${Math.min(100, pct(dayStats.min, goal))}%"></i></div>
         <div class="tiny" style="margin-top:6px">Mục tiêu hôm nay: ${Math.round(dayStats.min)}/${goal} phút</div>
       </div>`;
+
+    if (!TTS.hasChineseVoice()) {
+      h += `<div class="card" style="border-color:rgba(224,69,75,.45)">
+        <div class="row between">
+          <div style="flex:1;min-width:0"><h3 style="margin:0;color:var(--accent)">🔈 Chưa nghe được phát âm</h3>
+          <div class="muted">Máy chưa có giọng tiếng Trung</div></div>
+          <button class="btn sm primary" data-act="audioHelp">Sửa ngay</button>
+        </div></div>`;
+    }
 
     if (st.due > 0) {
       h += `<div class="card" style="border-color:rgba(232,179,60,.4)">
@@ -584,6 +607,64 @@
     </div>`;
   }
 
+  /* ---------- Chẩn đoán âm thanh ---------- */
+  function openAudioHelp(reason) {
+    document.querySelector(".sheet")?.remove();
+    const s = TTS.status();
+    const iOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+
+    let diag = `<div class="card tight" style="margin-bottom:12px">
+      <div class="row between" style="padding:4px 0"><span class="muted">Trình duyệt hỗ trợ đọc</span><b style="color:${s.supported ? "var(--jade)" : "var(--bad)"}">${s.supported ? "có" : "KHÔNG"}</b></div>
+      <div class="row between" style="padding:4px 0"><span class="muted">Tổng số giọng tìm thấy</span><b style="color:${s.totalVoices ? "var(--jade)" : "var(--bad)"}">${s.totalVoices}</b></div>
+      <div class="row between" style="padding:4px 0"><span class="muted">Giọng tiếng Trung</span><b style="color:${s.zh.length ? "var(--jade)" : "var(--bad)"}">${s.zh.length ? s.zh.length + " giọng" : "KHÔNG CÓ"}</b></div>
+      <div class="row between" style="padding:4px 0"><span class="muted">Đang dùng</span><b class="tiny">${esc(s.picked || "—")}</b></div>
+      <div class="row between" style="padding:4px 0"><span class="muted">Đã từng phát được tiếng</span><b>${s.everSpoke ? "rồi" : "chưa"}</b></div>
+      ${s.lastError ? `<div class="row between" style="padding:4px 0"><span class="muted">Lỗi gần nhất</span><b class="tiny" style="color:var(--gold)">${esc(s.lastError)}</b></div>` : ""}
+    </div>`;
+
+    if (s.zh.length) {
+      diag += `<div class="card tight" style="margin-bottom:12px"><div class="tiny" style="margin-bottom:6px">Chọn giọng để thử:</div>
+        ${s.zh.map((v, i) => `<button class="opt" style="padding:10px;margin-bottom:6px" data-act="tryVoice" data-i="${i}">
+          <span class="k">${i + 1}</span><span style="flex:1"><b>${esc(v.name)}</b><br><span class="tiny">${esc(v.lang)}${v.local ? " · trên máy" : " · cần mạng"}</span></span>🔊</button>`).join("")}
+      </div>`;
+    }
+
+    let fix;
+    if (!s.supported) {
+      fix = `<p>Hãy dùng <b>Safari</b> (iPhone) hoặc <b>Chrome/Edge</b> (máy tính). Trình duyệt trong ứng dụng Facebook/Zalo thường không hỗ trợ.</p>`;
+    } else if (!s.zh.length) {
+      fix = iOS
+        ? `<p><b>Nguyên nhân: iPhone chưa cài giọng tiếng Trung.</b></p>
+           <p>Vào <b>Cài đặt → Trợ năng → Nội dung được đọc → Giọng nói → Tiếng Trung → Phổ thông (Trung Quốc đại lục)</b> rồi tải một giọng về (ví dụ Tingting / Lili).</p>
+           <p>Tải xong hãy <b>đóng hẳn Safari</b> (vuốt lên xoá khỏi đa nhiệm) và mở lại app.</p>`
+        : `<p><b>Nguyên nhân: máy tính chưa có gói giọng nói tiếng Trung.</b></p>
+           <p>Windows: <b>Cài đặt → Thời gian & ngôn ngữ → Ngôn ngữ → Thêm ngôn ngữ → 中文 (简体，中国)</b>, khi cài nhớ tick <b>Text-to-speech</b>. Sau đó khởi động lại trình duyệt.</p>
+           <p>Hoặc mở app trên iPhone — ở đó chỉ cần tải giọng trong phần Trợ năng.</p>`;
+    } else {
+      fix = iOS
+        ? `<p>Máy đã có giọng tiếng Trung, nên nhiều khả năng là <b>đường ra âm thanh</b>:</p>
+           <p>1. Gạt <b>công tắc chuông/im lặng</b> bên hông iPhone sang chế độ có chuông — Safari đọc văn bản qua kênh chuông, bật im lặng là không nghe thấy gì.<br>
+           2. Bấm <b>tăng âm lượng</b> trong lúc đang phát (âm lượng chuông và âm lượng media là hai mức riêng).<br>
+           3. Kiểm tra tai nghe / loa Bluetooth có đang kết nối không.<br>
+           4. Tắt <b>Chế độ nguồn điện thấp</b> nếu đang bật.</p>`
+        : `<p>Đã có giọng tiếng Trung. Kiểm tra âm lượng hệ thống, và xem tab này có bị <b>tắt tiếng</b> không (chuột phải vào tab → Bật tiếng trang web).</p>`;
+    }
+
+    const box = document.createElement("div");
+    box.className = "sheet";
+    box.innerHTML = `<div class="inner">
+      <h3>🔈 Chẩn đoán âm thanh</h3>
+      ${reason ? `<div class="tip" style="margin-bottom:12px"><b>Vấn đề</b><p>${esc(reason)}</p></div>` : ""}
+      ${diag}
+      <div class="card tight" style="margin-bottom:12px"><b style="font-size:13px;color:var(--gold)">Cách khắc phục</b>
+        <div class="muted" style="font-size:13.5px;line-height:1.6">${fix}</div></div>
+      <button class="btn primary" data-act="tryVoice" data-i="0">🔊 Thử phát lại: 你好</button>
+      <div class="spacer"></div>
+      <button class="btn ghost" data-act="closeSheet">Đóng</button>
+    </div>`;
+    document.body.appendChild(box);
+  }
+
   /* ---------- Từ điển ---------- */
   function dictList() {
     const q = App.dictQ.trim().toLowerCase();
@@ -757,12 +838,13 @@
       </div>
 
       <div class="card"><h3>Âm thanh</h3>
-        <div class="muted" style="margin-bottom:10px">
-          Giọng đọc: ${TTS.hasChineseVoice() ? "<b style='color:var(--jade)'>đã sẵn sàng (zh-CN)</b>" : "<b style='color:var(--gold)'>chưa tìm thấy giọng tiếng Trung</b>"}<br>
+        <div class="muted" style="margin-bottom:12px">
+          Giọng đọc: ${TTS.hasChineseVoice() ? "<b style='color:var(--jade)'>sẵn sàng (zh-CN)</b>" : "<b style='color:var(--bad)'>chưa có giọng tiếng Trung</b>"}<br>
           Nhận diện giọng nói: ${TTS.recognitionSupported() ? "<b style='color:var(--jade)'>có</b>" : "<b style='color:var(--gold)'>không hỗ trợ</b>"}
         </div>
-        <button class="btn sm" data-act="say" data-say="${(App.say.push("你好，很高兴认识你。"), App.say.length - 1)}">🔊 Thử giọng đọc</button>
-        ${TTS.hasChineseVoice() ? "" : `<div class="tip" style="margin-top:12px"><b>Bật giọng tiếng Trung trên iPhone</b><p>Cài đặt → Trợ năng → Nội dung được đọc → Giọng nói → Tiếng Trung (Phổ thông) → tải về. Sau đó tải lại trang.</p></div>`}
+        <button class="btn" data-act="tryVoice" data-i="0">🔊 Thử giọng đọc</button>
+        <div class="spacer"></div>
+        <button class="btn ghost" data-act="audioHelp">🩺 Chẩn đoán âm thanh</button>
       </div>
 
       <div class="card"><h3>Về ứng dụng</h3>
@@ -833,7 +915,7 @@
         go(v);
         break;
       }
-      case "say": TTS.speak(App.say[+t.dataset.say]); break;
+      case "say": speakSafe(App.say[+t.dataset.say]); break;
 
       case "startLesson":
         App.lessonDay = Store.S.currentDay; App.step = 0; timerReset(); go("lesson"); break;
@@ -1036,6 +1118,21 @@
         break;
       }
       case "closeSheet": document.querySelector(".sheet")?.remove(); break;
+      case "audioHelp": openAudioHelp(""); break;
+      case "tryVoice": {
+        const name = TTS.pickVoice(+t.dataset.i);
+        if (!name) { toast("Máy chưa có giọng tiếng Trung nào"); break; }
+        const label = t.innerHTML;
+        t.innerHTML = "⏳ đang phát…";
+        TTS.speak("你好，我在学中文。", {
+          onend: () => { t.innerHTML = label; },
+          onfail: err => {
+            t.innerHTML = label;
+            toast(err === "no-audio" ? "Gọi được nhưng không ra tiếng → xem mục Khắc phục" : "Lỗi: " + err, 3000);
+          }
+        });
+        break;
+      }
       case "reset": {
         if (confirm("Xoá toàn bộ tiến độ học và bắt đầu lại từ ngày 1?")) {
           Store.reset(); applyTheme(); toast("Đã xoá dữ liệu"); go("home");
