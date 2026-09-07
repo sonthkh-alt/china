@@ -57,7 +57,7 @@ Chạy trực tiếp trên trình duyệt Safari của iPhone, cài được và
 
 ## Cài lên iPhone
 
-1. Mở link GitHub Pages của repo bằng **Safari** (không dùng Chrome — Chrome trên iOS không cài được app).
+1. Mở <https://sonthkh-alt.github.io/china/> bằng **Safari** (không dùng Chrome — Chrome trên iOS không cài được app).
 2. Bấm nút **Chia sẻ** (ô vuông có mũi tên) → **Thêm vào MH chính** → **Thêm**.
 3. Mở app từ màn hình chính: chạy toàn màn hình, không có thanh địa chỉ.
 
@@ -73,19 +73,15 @@ Lần đầu bấm 🎤 Safari sẽ hỏi quyền — chọn **Cho phép**. Nế
 
 ---
 
-## Đưa lên GitHub Pages
+## Địa chỉ ứng dụng
 
-```bash
-# Lần đầu: tạo repo trống trên github.com (ví dụ: han-ngu-90), rồi:
-git remote add origin https://github.com/<TÊN-GITHUB>/han-ngu-90.git
-git branch -M main
-git push -u origin main
-```
+Repo: <https://github.com/sonthkh-alt/china>
 
-Sau đó vào **Settings → Pages → Source: Deploy from a branch → Branch: `main` / `(root)` → Save**.
+Bật GitHub Pages một lần: **Settings → Pages → Source: Deploy from a branch → Branch: `main` / `(root)` → Save**.
 
-Khoảng 1 phút sau app có tại:
-`https://<TÊN-GITHUB>.github.io/han-ngu-90/`
+Khoảng 1 phút sau, mở app tại:
+
+**<https://sonthkh-alt.github.io/china/>**
 
 Những lần cập nhật sau:
 
