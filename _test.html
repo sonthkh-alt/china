@@ -133,6 +133,43 @@ setTimeout(function () {
     chk("cham diem giong 100%", TTS.score("你好吗", "你好吗？") === 100);
     chk("cham diem giong thap", TTS.score("再见", "你好吗") < 40, String(TTS.score("再见", "你好吗")));
 
+    // ---- am thanh: cac lop du phong ----
+    var st = TTS.status();
+    chk("status day du khoa", ["supported","voicesReady","totalVoices","zh","netAllowed","online","audioUnlocked","lastEngine"].every(function(k){return k in st;}));
+    chk("mac dinh bat du phong mang", Store.S.settings.netAudio === true && Store.S.settings.audioSource === "auto");
+
+    // tat mang + khong co giong -> phai bao loi ro rang, khong im lang
+    var oldNet = Store.S.settings.netAudio;
+    Store.S.settings.netAudio = false;
+    Store.S.settings.audioSource = "net";
+    var failCode = null;
+    TTS.speak("你好", { onfail: function (c) { failCode = c; } });
+    chk("tat du phong -> bao loi net-off", failCode === "net-off", String(failCode));
+
+    // cau qua dai -> tu choi som thay vi treo
+    Store.S.settings.netAudio = true;
+    failCode = null;
+    TTS.speak(new Array(200).join("你"), { onfail: function (c) { failCode = c; } });
+    chk("cau qua dai -> too-long", failCode === "too-long", String(failCode));
+    Store.S.settings.netAudio = oldNet;
+    Store.S.settings.audioSource = "auto";
+
+    // speakSafe khong duoc chan khi danh sach giong chua nap
+    chk("co ham speakSafe khong chan som", typeof TTS.ready === "function" && typeof TTS.playNet === "function");
+
+    // bang chan doan mo duoc
+    App.view = "settings"; render();
+    var ahBtn = document.querySelector('[data-act="audioHelp"]');
+    chk("co nut chan doan am thanh", !!ahBtn);
+    if (ahBtn) {
+      ahBtn.click();
+      var sheet = document.querySelector(".sheet");
+      chk("bang chan doan hien ra", !!sheet && sheet.innerHTML.indexOf("Chẩn đoán") > -1);
+      chk("co nut thu qua mang", !!document.querySelector('[data-act="tryNet"]'));
+      document.querySelector('[data-act="closeSheet"]').click();
+      chk("dong bang chan doan", !document.querySelector(".sheet"));
+    }
+
     // xuat / nhap
     var j = Store.exportJSON();
     Store.importJSON(j);

@@ -1,4 +1,5 @@
 /* ============ Hán Ngữ 90 · ứng dụng chính ============ */
+window.APP_BUILD = "1.2 (âm thanh 3 lớp)";
 (function () {
   const $ = s => document.querySelector(s);
   const esc = s => String(s == null ? "" : s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
@@ -32,18 +33,35 @@
   }
   function shuffle(a) { a = a.slice(); for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; }
 
-  // Phát âm và báo rõ khi hỏng, thay vì im lặng không lý do
+  // Phát âm: luôn THỬ trước, chỉ báo lỗi khi mọi lớp dự phòng đều hỏng.
+  // (Không chặn theo hasChineseVoice: trên iPhone danh sách giọng nạp rất muộn,
+  //  chặn sớm sẽ báo lỗi oan ngay lần bấm đầu tiên.)
   let audioWarned = false;
+  const FAIL_MSG = {
+    "net-off": "Máy không có giọng tiếng Trung và bạn đã tắt phát âm qua mạng.",
+    "offline": "Máy không có giọng tiếng Trung, mà hiện đang không có mạng.",
+    "blocked": "Trình duyệt chặn phát âm thanh tự động.",
+    "net-error": "Không tải được âm thanh qua mạng.",
+    "too-long": "Câu quá dài để phát qua mạng.",
+    "no-audio": "Đã gọi phát âm nhưng không có tiếng nào phát ra."
+  };
   function speakSafe(text) {
-    if (!TTS.available()) { openAudioHelp("Trình duyệt này không hỗ trợ đọc văn bản."); return; }
-    if (!TTS.hasChineseVoice()) { openAudioHelp("Máy chưa có giọng tiếng Trung."); return; }
     TTS.speak(text, {
-      onfail: () => {
-        if (audioWarned) { toast("Vẫn không phát được — mở Cài đặt → Chẩn đoán âm thanh"); return; }
+      onfail: code => {
+        if (audioWarned) { toast("Vẫn không nghe được — mở Cài đặt → Chẩn đoán âm thanh", 2600); return; }
         audioWarned = true;
-        openAudioHelp("Đã gọi phát âm nhưng không có tiếng phát ra.");
+        openAudioHelp(FAIL_MSG[code] || ("Không phát được âm thanh (" + code + ")."));
       }
     });
+  }
+
+  // ok = có giọng trên máy · net = phải nhờ mạng · bad = không cách nào phát được
+  function audioHealth() {
+    const s = TTS.status();
+    if (s.picked) return "ok";
+    if (!s.voicesReady && s.supported) return "ok";        // chưa nạp xong, đừng vội kết luận
+    if (s.netAllowed && s.online) return "net";
+    return "bad";
   }
   function pct(a, b) { return b ? Math.round(a / b * 100) : 0; }
   function fmtMin(m) { m = Math.round(m); return m < 60 ? m + " phút" : Math.floor(m / 60) + "h" + String(m % 60).padStart(2, "0"); }
@@ -131,12 +149,13 @@
         <div class="tiny" style="margin-top:6px">Mục tiêu hôm nay: ${Math.round(dayStats.min)}/${goal} phút</div>
       </div>`;
 
-    if (!TTS.hasChineseVoice()) {
-      h += `<div class="card" style="border-color:rgba(224,69,75,.45)">
+    const ah = audioHealth();
+    if (ah !== "ok") {
+      h += `<div class="card" style="border-color:${ah === "bad" ? "rgba(224,69,75,.45)" : "rgba(232,179,60,.4)"}">
         <div class="row between">
-          <div style="flex:1;min-width:0"><h3 style="margin:0;color:var(--accent)">🔈 Chưa nghe được phát âm</h3>
-          <div class="muted">Máy chưa có giọng tiếng Trung</div></div>
-          <button class="btn sm primary" data-act="audioHelp">Sửa ngay</button>
+          <div style="flex:1;min-width:0"><h3 style="margin:0;color:${ah === "bad" ? "var(--accent)" : "var(--gold)"}">🔈 ${ah === "bad" ? "Chưa nghe được phát âm" : "Đang phát âm qua mạng"}</h3>
+          <div class="muted">${ah === "bad" ? "Máy chưa có giọng tiếng Trung" : "Máy chưa có giọng tiếng Trung — cài thêm để dùng offline"}</div></div>
+          <button class="btn sm ${ah === "bad" ? "primary" : ""}" data-act="audioHelp">${ah === "bad" ? "Sửa ngay" : "Xem"}</button>
         </div></div>`;
     }
 
@@ -611,15 +630,20 @@
   function openAudioHelp(reason) {
     document.querySelector(".sheet")?.remove();
     const s = TTS.status();
+    const source0 = Store.S.settings.audioSource || "auto";
     const iOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
 
+    const row = (k, v, color) => `<div class="row between" style="padding:4px 0"><span class="muted">${k}</span><b class="tiny"${color ? ` style="color:${color}"` : ""}>${v}</b></div>`;
     let diag = `<div class="card tight" style="margin-bottom:12px">
-      <div class="row between" style="padding:4px 0"><span class="muted">Trình duyệt hỗ trợ đọc</span><b style="color:${s.supported ? "var(--jade)" : "var(--bad)"}">${s.supported ? "có" : "KHÔNG"}</b></div>
-      <div class="row between" style="padding:4px 0"><span class="muted">Tổng số giọng tìm thấy</span><b style="color:${s.totalVoices ? "var(--jade)" : "var(--bad)"}">${s.totalVoices}</b></div>
-      <div class="row between" style="padding:4px 0"><span class="muted">Giọng tiếng Trung</span><b style="color:${s.zh.length ? "var(--jade)" : "var(--bad)"}">${s.zh.length ? s.zh.length + " giọng" : "KHÔNG CÓ"}</b></div>
-      <div class="row between" style="padding:4px 0"><span class="muted">Đang dùng</span><b class="tiny">${esc(s.picked || "—")}</b></div>
-      <div class="row between" style="padding:4px 0"><span class="muted">Đã từng phát được tiếng</span><b>${s.everSpoke ? "rồi" : "chưa"}</b></div>
-      ${s.lastError ? `<div class="row between" style="padding:4px 0"><span class="muted">Lỗi gần nhất</span><b class="tiny" style="color:var(--gold)">${esc(s.lastError)}</b></div>` : ""}
+      ${row("Trình duyệt hỗ trợ đọc", s.supported ? "có" : "KHÔNG", s.supported ? "var(--jade)" : "var(--bad)")}
+      ${row("Đã nạp xong danh sách giọng", s.voicesReady ? "rồi" : "chưa", s.voicesReady ? "var(--jade)" : "var(--gold)")}
+      ${row("Tổng số giọng", s.totalVoices, s.totalVoices ? "var(--jade)" : "var(--bad)")}
+      ${row("Giọng tiếng Trung", s.zh.length ? s.zh.length + " giọng" : "KHÔNG CÓ", s.zh.length ? "var(--jade)" : "var(--bad)")}
+      ${row("Đang dùng", esc(s.picked || "—"))}
+      ${row("Phát qua mạng dự phòng", s.netAllowed ? (s.online ? "bật · có mạng" : "bật · KHÔNG có mạng") : "đã tắt", s.netAllowed && s.online ? "var(--jade)" : "var(--gold)")}
+      ${row("Đã mở khoá âm thanh", s.audioUnlocked ? "rồi" : "chưa", s.audioUnlocked ? "var(--jade)" : "var(--gold)")}
+      ${row("Đã từng phát được tiếng", s.everSpoke ? "rồi (" + esc(s.lastEngine === "net" ? "qua mạng" : "giọng máy") + ")" : "chưa", s.everSpoke ? "var(--jade)" : "var(--gold)")}
+      ${s.lastError ? row("Lỗi gần nhất", esc(s.lastError), "var(--gold)") : ""}
     </div>`;
 
     if (s.zh.length) {
@@ -630,24 +654,31 @@
     }
 
     let fix;
-    if (!s.supported) {
+    if (!s.supported && s.netAllowed) {
+      fix = `<p>Trình duyệt không đọc được văn bản, nhưng app đã tự chuyển sang <b>phát qua mạng</b> — bạn vẫn nghe được khi có internet.</p>
+             <p>Muốn nghe cả khi offline, hãy dùng <b>Safari</b> (iPhone) hoặc <b>Chrome/Edge</b> (máy tính) và cài giọng tiếng Trung.</p>`;
+    } else if (!s.supported) {
       fix = `<p>Hãy dùng <b>Safari</b> (iPhone) hoặc <b>Chrome/Edge</b> (máy tính). Trình duyệt trong ứng dụng Facebook/Zalo thường không hỗ trợ.</p>`;
     } else if (!s.zh.length) {
-      fix = iOS
+      fix = (s.netAllowed && s.online
+        ? `<p><b>App đang phát qua mạng nên bạn vẫn nghe được.</b> Cài thêm giọng vào máy để nghe cả khi offline và phát nhanh hơn:</p>`
+        : "") + (iOS
         ? `<p><b>Nguyên nhân: iPhone chưa cài giọng tiếng Trung.</b></p>
            <p>Vào <b>Cài đặt → Trợ năng → Nội dung được đọc → Giọng nói → Tiếng Trung → Phổ thông (Trung Quốc đại lục)</b> rồi tải một giọng về (ví dụ Tingting / Lili).</p>
            <p>Tải xong hãy <b>đóng hẳn Safari</b> (vuốt lên xoá khỏi đa nhiệm) và mở lại app.</p>`
         : `<p><b>Nguyên nhân: máy tính chưa có gói giọng nói tiếng Trung.</b></p>
            <p>Windows: <b>Cài đặt → Thời gian & ngôn ngữ → Ngôn ngữ → Thêm ngôn ngữ → 中文 (简体，中国)</b>, khi cài nhớ tick <b>Text-to-speech</b>. Sau đó khởi động lại trình duyệt.</p>
-           <p>Hoặc mở app trên iPhone — ở đó chỉ cần tải giọng trong phần Trợ năng.</p>`;
+           <p>Hoặc mở app trên iPhone — ở đó chỉ cần tải giọng trong phần Trợ năng.</p>`);
     } else {
       fix = iOS
         ? `<p>Máy đã có giọng tiếng Trung, nên nhiều khả năng là <b>đường ra âm thanh</b>:</p>
            <p>1. Gạt <b>công tắc chuông/im lặng</b> bên hông iPhone sang chế độ có chuông — Safari đọc văn bản qua kênh chuông, bật im lặng là không nghe thấy gì.<br>
            2. Bấm <b>tăng âm lượng</b> trong lúc đang phát (âm lượng chuông và âm lượng media là hai mức riêng).<br>
            3. Kiểm tra tai nghe / loa Bluetooth có đang kết nối không.<br>
-           4. Tắt <b>Chế độ nguồn điện thấp</b> nếu đang bật.</p>`
-        : `<p>Đã có giọng tiếng Trung. Kiểm tra âm lượng hệ thống, và xem tab này có bị <b>tắt tiếng</b> không (chuột phải vào tab → Bật tiếng trang web).</p>`;
+           4. Tắt <b>Chế độ nguồn điện thấp</b> nếu đang bật.</p>
+           <p><b>Cách chắc ăn nhất:</b> chuyển sang phát qua mạng bằng nút màu vàng bên dưới. Âm thanh khi đó đi qua kênh media nên <b>không bị công tắc im lặng chặn</b>.</p>`
+        : `<p>Đã có giọng tiếng Trung. Kiểm tra âm lượng hệ thống, và xem tab này có bị <b>tắt tiếng</b> không (chuột phải vào tab → Bật tiếng trang web).</p>
+           <p>Hoặc chuyển sang phát qua mạng bằng nút màu vàng bên dưới.</p>`;
     }
 
     const box = document.createElement("div");
@@ -658,8 +689,12 @@
       ${diag}
       <div class="card tight" style="margin-bottom:12px"><b style="font-size:13px;color:var(--gold)">Cách khắc phục</b>
         <div class="muted" style="font-size:13.5px;line-height:1.6">${fix}</div></div>
-      <button class="btn primary" data-act="tryVoice" data-i="0">🔊 Thử phát lại: 你好</button>
+      <button class="btn primary" data-act="tryVoice" data-i="0">🔊 Thử giọng của máy</button>
       <div class="spacer"></div>
+      <button class="btn gold" data-act="tryNet">🌐 Thử phát qua mạng</button>
+      <div class="spacer"></div>
+      ${s.picked && source0 !== "net" ? `<button class="btn" data-act="forceNet">🔁 Luôn dùng phát qua mạng</button><div class="spacer"></div>` : ""}
+      ${source0 === "net" ? `<button class="btn" data-act="forceDevice">🔁 Quay lại giọng của máy</button><div class="spacer"></div>` : ""}
       <button class="btn ghost" data-act="closeSheet">Đóng</button>
     </div>`;
     document.body.appendChild(box);
@@ -798,7 +833,7 @@
     const S = Store.S;
     const s = S.settings;
     return `<div class="wrap view">
-      <div class="topbar"><div><h1>Cài đặt</h1><div class="sub">Hán Ngữ 90 · phiên bản 1.0</div></div></div>
+      <div class="topbar"><div><h1>Cài đặt</h1><div class="sub">Hán Ngữ 90 · bản ${esc(window.APP_BUILD || "?")}</div></div></div>
 
       <div class="card"><h3>Học tập</h3>
         <div class="row between" style="padding:10px 0;border-bottom:1px solid var(--line)">
@@ -842,9 +877,20 @@
           Giọng đọc: ${TTS.hasChineseVoice() ? "<b style='color:var(--jade)'>sẵn sàng (zh-CN)</b>" : "<b style='color:var(--bad)'>chưa có giọng tiếng Trung</b>"}<br>
           Nhận diện giọng nói: ${TTS.recognitionSupported() ? "<b style='color:var(--jade)'>có</b>" : "<b style='color:var(--gold)'>không hỗ trợ</b>"}
         </div>
+        <div class="row between" style="padding:10px 0;border-top:1px solid var(--line);border-bottom:1px solid var(--line)">
+          <div><div>Nguồn phát âm</div><div class="tiny">tự động = ưu tiên giọng máy</div></div>
+          <select class="sel" data-act="setAudioSrc">
+            ${[["auto", "Tự động"], ["device", "Giọng trên máy"], ["net", "Qua mạng"]].map(v => `<option value="${v[0]}" ${s.audioSource === v[0] ? "selected" : ""}>${v[1]}</option>`).join("")}
+          </select>
+        </div>
+        <div class="row between" style="padding:10px 0">
+          <div><div>Dự phòng qua mạng</div><div class="tiny">dùng khi máy thiếu giọng tiếng Trung</div></div>
+          <button class="toggle ${s.netAudio !== false ? "on" : ""}" data-act="tg" data-k="netAudio"><i></i></button>
+        </div>
         <button class="btn" data-act="tryVoice" data-i="0">🔊 Thử giọng đọc</button>
         <div class="spacer"></div>
         <button class="btn ghost" data-act="audioHelp">🩺 Chẩn đoán âm thanh</button>
+        <div class="tiny" style="margin-top:10px">Khi phát qua mạng, chỉ đoạn chữ Hán cần đọc được gửi tới dịch vụ đọc của Google. Tắt tuỳ chọn trên nếu bạn không muốn điều đó.</div>
       </div>
 
       <div class="card"><h3>Về ứng dụng</h3>
@@ -1119,6 +1165,32 @@
       }
       case "closeSheet": document.querySelector(".sheet")?.remove(); break;
       case "audioHelp": openAudioHelp(""); break;
+      case "forceNet": {
+        Store.S.settings.audioSource = "net";
+        Store.S.settings.netAudio = true;
+        Store.save(); audioWarned = false;
+        toast("Đã chuyển sang phát qua mạng", 2200);
+        openAudioHelp("");
+        speakSafe("你好，我在学中文。");
+        break;
+      }
+      case "forceDevice": {
+        Store.S.settings.audioSource = "auto";
+        Store.save(); audioWarned = false;
+        toast("Đã quay lại giọng của máy", 2200);
+        openAudioHelp("");
+        speakSafe("你好");
+        break;
+      }
+      case "tryNet": {
+        const label = t.innerHTML;
+        t.innerHTML = "⏳ đang tải…";
+        TTS.playNet("你好，我在学中文。", {
+          onend: () => { t.innerHTML = label; },
+          onfail: err => { t.innerHTML = label; toast(FAIL_MSG[err] || ("Lỗi: " + err), 3000); }
+        });
+        break;
+      }
       case "tryVoice": {
         const name = TTS.pickVoice(+t.dataset.i);
         if (!name) { toast("Máy chưa có giọng tiếng Trung nào"); break; }
@@ -1149,6 +1221,7 @@
     if (a === "setGoal") { Store.S.settings.dailyGoal = +v; Store.save(); toast("Đã lưu"); }
     if (a === "setRate") { Store.S.settings.rate = +v; Store.save(); TTS.speak("你好"); }
     if (a === "setTheme") { Store.S.settings.theme = v; Store.save(); applyTheme(); }
+    if (a === "setAudioSrc") { Store.S.settings.audioSource = v; Store.save(); audioWarned = false; speakSafe("你好"); }
     if (a === "setDay") { Store.S.currentDay = +v; Store.save(); toast("Đã chuyển sang ngày " + v); render(); }
   });
 
@@ -1174,6 +1247,8 @@
     window.LESSONS.sort((a, b) => a.d - b.d);
     App.lessonDay = Store.S.currentDay;
     render();
+    // Danh sách giọng nạp muộn (rất hay gặp trên iPhone) → vẽ lại để bỏ cảnh báo sai
+    TTS.onVoices(() => { if (["home", "settings"].includes(App.view) && !document.querySelector(".sheet")) render(); });
     if ("serviceWorker" in navigator) {
       navigator.serviceWorker.register("./sw.js").catch(() => {});
     }

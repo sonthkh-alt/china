@@ -1,5 +1,6 @@
-/* Service worker: cho phép học offline hoàn toàn */
-const CACHE = "hanyu90-v1";
+/* Service worker: học offline được, nhưng luôn ưu tiên bản mới nhất khi có mạng */
+const VERSION = "v3";
+const CACHE = "hanyu90-" + VERSION;
 const ASSETS = [
   "./",
   "./index.html",
@@ -37,22 +38,29 @@ self.addEventListener("activate", e => {
   );
 });
 
+self.addEventListener("message", e => {
+  if (e.data === "skipWaiting") self.skipWaiting();
+});
+
 self.addEventListener("fetch", e => {
   const req = e.request;
   if (req.method !== "GET") return;
-  const url = new URL(req.url);
-  if (url.origin !== location.origin) return;   // bỏ qua font Google
 
+  const url = new URL(req.url);
+  // Âm thanh phát qua mạng: để trình duyệt tự xử lý (có Range request, không cache được)
+  if (url.origin !== location.origin) return;
+
+  // Network-first: luôn lấy bản mới khi có mạng, mất mạng thì dùng bản đã lưu.
+  // (Cache-first khiến người dùng kẹt ở bản cũ sau mỗi lần cập nhật.)
   e.respondWith(
-    caches.match(req).then(hit => {
-      const net = fetch(req).then(res => {
+    fetch(req)
+      .then(res => {
         if (res && res.status === 200 && res.type === "basic") {
           const copy = res.clone();
-          caches.open(CACHE).then(c => c.put(req, copy));
+          caches.open(CACHE).then(c => c.put(req, copy)).catch(() => {});
         }
         return res;
-      }).catch(() => hit);
-      return hit || net;
-    })
+      })
+      .catch(() => caches.match(req).then(hit => hit || caches.match("./index.html")))
   );
 });

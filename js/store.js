@@ -17,7 +17,9 @@
       showHanzi: true,
       theme: "auto",
       dailyGoal: 60,          // phút
-      newPerDay: 0            // 0 = theo bài học
+      newPerDay: 0,           // 0 = theo bài học
+      audioSource: "auto",    // auto | device | net
+      netAudio: true          // cho phép phát âm qua mạng khi máy thiếu giọng
     }
   };
 

@@ -61,11 +61,22 @@ Chạy trực tiếp trên trình duyệt Safari của iPhone, cài được và
 2. Bấm nút **Chia sẻ** (ô vuông có mũi tên) → **Thêm vào MH chính** → **Thêm**.
 3. Mở app từ màn hình chính: chạy toàn màn hình, không có thanh địa chỉ.
 
-### Bật giọng đọc tiếng Trung (làm 1 lần)
+### Không nghe được âm thanh?
 
-Nếu bấm 🔊 mà không nghe thấy gì:
+App có **3 lớp phát âm**, tự chuyển tiếp khi lớp trước hỏng:
 
-**Cài đặt → Trợ năng → Nội dung được đọc → Giọng nói → Tiếng Trung (Phổ thông)** → tải giọng về → mở lại app.
+1. Giọng tiếng Trung cài sẵn trên máy — tốt nhất, chạy offline
+2. Giọng bất kỳ với `lang=zh-CN` — dùng khi danh sách giọng chưa nạp xong
+3. Phát qua mạng (Google TTS) — dùng khi máy hoàn toàn không có giọng tiếng Trung
+
+Nếu vẫn im lặng, vào **Cài đặt → 🩺 Chẩn đoán âm thanh**. Bảng này cho biết máy có bao nhiêu giọng, có giọng tiếng Trung không, đang dùng giọng nào và lỗi gần nhất là gì — kèm hướng dẫn khắc phục riêng cho iPhone/Windows.
+
+Hai nguyên nhân hay gặp nhất trên iPhone:
+
+- **Công tắc chuông/im lặng** đang gạt sang im lặng. `speechSynthesis` phát qua kênh chuông nên bị chặn hoàn toàn. Cách gỡ nhanh: trong bảng chẩn đoán bấm **"Luôn dùng phát qua mạng"** — audio HTML5 đi qua kênh media nên không bị công tắc này ảnh hưởng.
+- **Chưa cài giọng tiếng Trung**: Cài đặt → Trợ năng → Nội dung được đọc → Giọng nói → Tiếng Trung (Phổ thông) → tải về → đóng hẳn Safari rồi mở lại.
+
+Muốn tắt hoàn toàn việc gửi chữ Hán ra ngoài: **Cài đặt → Dự phòng qua mạng → tắt**.
 
 ### Cho phép micro (để chấm điểm phát âm)
 
