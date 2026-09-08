@@ -1,5 +1,5 @@
 /* ============ Hán Ngữ 90 · ứng dụng chính ============ */
-window.APP_BUILD = "1.2 (âm thanh 3 lớp)";
+window.APP_BUILD = "1.3 (sửa nút loa)";
 (function () {
   const $ = s => document.querySelector(s);
   const esc = s => String(s == null ? "" : s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
@@ -29,7 +29,7 @@ window.APP_BUILD = "1.2 (âm thanh 3 lớp)";
   }
   function sayBtn(text) {
     App.say.push(text);
-    return `<button class="spk" data-say="${App.say.length - 1}" aria-label="Nghe">🔊</button>`;
+    return `<button type="button" class="spk" data-act="say" data-say="${App.say.length - 1}" aria-label="Nghe">🔊</button>`;
   }
   function shuffle(a) { a = a.slice(); for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; }
 

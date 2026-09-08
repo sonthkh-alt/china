@@ -1,5 +1,5 @@
 /* Service worker: học offline được, nhưng luôn ưu tiên bản mới nhất khi có mạng */
-const VERSION = "v3";
+const VERSION = "v4";
 const CACHE = "hanyu90-" + VERSION;
 const ASSETS = [
   "./",
