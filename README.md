@@ -94,11 +94,13 @@ Khoảng 1 phút sau, mở app tại:
 
 **<https://sonthkh-alt.github.io/china/>**
 
-Những lần cập nhật sau:
+Những lần cập nhật sau chỉ cần commit — repo này có hook `post-commit` **tự động đẩy lên GitHub**:
 
 ```bash
-git add -A && git commit -m "cập nhật" && git push
+git add -A && git commit -m "cập nhật"
 ```
+
+Hook nằm ở `.git/hooks/post-commit`. Nó chỉ đẩy nhánh `main`, và nếu mất mạng hoặc chưa đăng nhập thì bỏ qua chứ không làm hỏng commit — lúc đó chạy `git push` lại khi sẵn sàng. Muốn tắt: xoá file hook đó.
 
 ---
 
